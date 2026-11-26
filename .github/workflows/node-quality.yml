@@ -1,0 +1,54 @@
+# rig-ci: job `quality` for Node projects. Called with workflow_call; see README.md.
+# With a package.json, it uses the installed Prettier and TypeScript and the
+# npm script `test:coverage`. Without one, it runs them through npx and node --test.
+name: Node quality
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node version of production, e.g. '22'.
+        type: string
+        required: true
+      timeout-minutes:
+        description: Time limit of the job. A project that raises it gives the reason in its CLAUDE.md.
+        type: number
+        default: 20
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Install npm packages
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Prettier
+        run: |
+          if [ -x node_modules/.bin/prettier ]; then
+            node_modules/.bin/prettier --check .
+          else
+            npx --yes prettier@3 --check .
+          fi
+      - name: TypeScript
+        if: hashFiles('tsconfig.json') != ''
+        run: |
+          if [ -x node_modules/.bin/tsc ]; then
+            node_modules/.bin/tsc --noEmit
+          else
+            npx --yes -p typescript tsc --noEmit
+          fi
+      - name: Tests with coverage
+        run: |
+          if [ -f package.json ] && node -e "process.exit(require('./package.json').scripts?.['test:coverage'] ? 0 : 1)"; then
+            npm run test:coverage
+          else
+            node --test --experimental-test-coverage --test-coverage-lines=70
+          fi

@@ -1,0 +1,58 @@
+# rig-ci: job `quality` for PHP projects without Laravel. Called with workflow_call; see README.md.
+name: PHP quality
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: PHP version of production, e.g. '8.3'.
+        type: string
+        required: true
+      node-version:
+        description: Node version of production (used only with a package-lock.json).
+        type: string
+        default: '22'
+      timeout-minutes:
+        description: Time limit of the job. A project that raises it gives the reason in its CLAUDE.md.
+        type: number
+        default: 20
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          coverage: pcov
+          tools: composer:v2
+      - name: Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - uses: actions/setup-node@v5
+        if: hashFiles('package-lock.json') != ''
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+      - name: Install npm packages
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Pint
+        run: vendor/bin/pint --test
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+      - name: Prettier (when installed)
+        run: if [ -x node_modules/.bin/prettier ]; then node_modules/.bin/prettier --check .; fi
+      - name: Pest with coverage
+        run: vendor/bin/pest --coverage --min=70
