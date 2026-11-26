@@ -25,13 +25,21 @@ dependency audit) in their `ci.yml` and call only `security.yml` and
 | --- | --- | --- |
 | `laravel-quality.yml`, `php-quality.yml` | `php-version` (version of production) | required |
 | | `node-version` (used only with a `package-lock.json`) | `'22'` |
+| | `php-extensions` (for `setup-php`, e.g. `'mbstring, sqlite3'`) | `''` |
 | | `timeout-minutes` | `20` |
-| `node-quality.yml` | `node-version` (version of production) | required |
+| `laravel-quality.yml` | `migrate` (create `database/database.sqlite`, run `php artisan migrate --force`) | `false` |
+| `node-quality.yml` | `node-version` (version of production) | `''` |
+| | `node-version-file` (relative to the repository root, e.g. `'app/.nvmrc'`) | `''` |
+| | `working-directory` (folder with the `package.json`; all steps run there) | `'.'` |
 | | `timeout-minutes` | `20` |
 | `security.yml` | `php-version` (for `composer audit`) | `'8.3'` |
+| | `php-extensions` (for `setup-php`) | `''` |
+| | `working-directory` (folder with the `package.json` for the npm checks; Composer is checked in the root) | `'.'` |
 | `gitleaks.yml` | none | |
 
 A project that raises `timeout-minutes` gives the reason in its `CLAUDE.md`.
+`node-quality.yml` needs exactly one of `node-version` and `node-version-file`;
+with both or neither the job fails.
 
 ## Calling the workflows
 
@@ -59,6 +67,9 @@ jobs:
     uses: ditshej/rig-ci/.github/workflows/laravel-quality.yml@v1
     with:
       php-version: '8.3'
+      # Optional:
+      # php-extensions: 'mbstring, sqlite3'
+      # migrate: true
   security:
     uses: ditshej/rig-ci/.github/workflows/security.yml@v1
     with:
@@ -68,6 +79,21 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+```
+
+Node project with its `package.json` in a subfolder:
+
+```yaml
+jobs:
+  quality:
+    uses: ditshej/rig-ci/.github/workflows/node-quality.yml@v1
+    with:
+      node-version-file: app/.nvmrc
+      working-directory: app
+  security:
+    uses: ditshej/rig-ci/.github/workflows/security.yml@v1
+    with:
+      working-directory: app
 ```
 
 Notes:
