@@ -75,10 +75,20 @@ jobs:
           tools: composer:v2
       - name: composer audit (runtime)
         if: (success() || failure()) && hashFiles('composer.lock') != ''
-        run: composer audit --locked --no-dev
+        run: |
+          # composer audit fails with "No installed packages found" on an empty list.
+          if [ "$(jq '.packages | length' composer.lock)" = 0 ]; then
+            echo "::notice file=composer.lock::No runtime packages in composer.lock, audit skipped."
+            exit 0
+          fi
+          composer audit --locked --no-dev
       - name: composer audit (all packages, warning only)
         if: (success() || failure()) && hashFiles('composer.lock') != ''
         run: |
+          if [ "$(jq '(.packages | length) + (."packages-dev" // [] | length)' composer.lock)" = 0 ]; then
+            echo "::notice file=composer.lock::No packages in composer.lock, audit skipped."
+            exit 0
+          fi
           composer audit --locked || echo "::warning file=composer.lock::composer audit found a vulnerability. Runtime packages fail the step above; dev packages: see rig-enforcement, section 3."
       - name: npm audit (runtime)
         if: (success() || failure()) && hashFiles(format('{0}/package-lock.json', inputs.working-directory)) != ''
