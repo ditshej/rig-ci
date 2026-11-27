@@ -40,6 +40,8 @@ dependency audit) in their `ci.yml` and call only `security.yml` and
 A project that raises `timeout-minutes` gives the reason in its `CLAUDE.md`.
 `node-quality.yml` needs exactly one of `node-version` and `node-version-file`;
 with both or neither the job fails.
+`security.yml` skips a `composer audit` step with a notice when its package
+list in `composer.lock` is empty (e.g. only `php` in `require`).
 
 ## Calling the workflows
 
