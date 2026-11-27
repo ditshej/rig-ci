@@ -7,9 +7,17 @@ on:
   workflow_call:
     inputs:
       node-version:
-        description: Node version of production, e.g. '22'.
+        description: Node version of production, e.g. '22'. Set this or node-version-file.
         type: string
-        required: true
+        default: ''
+      node-version-file:
+        description: File with the Node version, relative to the repository root, e.g. 'game/.nvmrc'. Set this or node-version.
+        type: string
+        default: ''
+      working-directory:
+        description: Folder with the package.json, relative to the repository root. All steps run there.
+        type: string
+        default: '.'
       timeout-minutes:
         description: Time limit of the job. A project that raises it gives the reason in its CLAUDE.md.
         type: number
@@ -22,13 +30,31 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
+      - name: Check inputs
+        working-directory: .
+        env:
+          NODE_VERSION: ${{ inputs.node-version }}
+          NODE_VERSION_FILE: ${{ inputs.node-version-file }}
+        run: |
+          if [ -n "$NODE_VERSION" ] && [ -n "$NODE_VERSION_FILE" ]; then
+            echo "::error::Set either node-version or node-version-file, not both."
+            exit 1
+          fi
+          if [ -z "$NODE_VERSION" ] && [ -z "$NODE_VERSION_FILE" ]; then
+            echo "::error::Set node-version or node-version-file."
+            exit 1
+          fi
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ inputs.node-version }}
+          node-version-file: ${{ inputs.node-version-file }}
       - name: Install npm packages
-        if: hashFiles('package-lock.json') != ''
+        if: hashFiles(format('{0}/package-lock.json', inputs.working-directory)) != ''
         run: npm ci
       - name: Prettier
         run: |
@@ -38,7 +64,7 @@ jobs:
             npx --yes prettier@3 --check .
           fi
       - name: TypeScript
-        if: hashFiles('tsconfig.json') != ''
+        if: hashFiles(format('{0}/tsconfig.json', inputs.working-directory)) != ''
         run: |
           if [ -x node_modules/.bin/tsc ]; then
             node_modules/.bin/tsc --noEmit

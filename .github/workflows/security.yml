@@ -10,6 +10,14 @@ on:
         description: PHP version for composer audit (used only with a composer.lock).
         type: string
         default: '8.3'
+      php-extensions:
+        description: PHP extensions for shivammathur/setup-php, e.g. 'curl, dom, gd'.
+        type: string
+        default: ''
+      working-directory:
+        description: Folder with the package.json for the npm checks, relative to the repository root. Composer is always checked in the root.
+        type: string
+        default: '.'
 
 permissions:
   contents: read
@@ -43,14 +51,18 @@ jobs:
             echo "::warning file=CLAUDE.md::The project part of CLAUDE.md has $lines lines (guide: about 60)."
           fi
       - name: Lockfiles
+        env:
+          NPM_DIR: ${{ inputs.working-directory }}
         run: |
           status=0
           if [ -f composer.json ] && [ ! -f composer.lock ]; then
             echo "::error file=composer.json::composer.json without composer.lock. Commit the lockfile."
             status=1
           fi
-          if [ -f package.json ] && [ ! -f package-lock.json ]; then
-            echo "::error file=package.json::package.json without package-lock.json. Commit the lockfile."
+          npm_prefix=""
+          if [ "${NPM_DIR%/}" != "." ]; then npm_prefix="${NPM_DIR%/}/"; fi
+          if [ -f "${npm_prefix}package.json" ] && [ ! -f "${npm_prefix}package-lock.json" ]; then
+            echo "::error file=${npm_prefix}package.json::package.json without package-lock.json. Commit the lockfile."
             status=1
           fi
           exit $status
@@ -58,6 +70,7 @@ jobs:
         if: (success() || failure()) && hashFiles('composer.lock') != ''
         with:
           php-version: ${{ inputs.php-version }}
+          extensions: ${{ inputs.php-extensions }}
           coverage: none
           tools: composer:v2
       - name: composer audit (runtime)
@@ -68,9 +81,15 @@ jobs:
         run: |
           composer audit --locked || echo "::warning file=composer.lock::composer audit found a vulnerability. Runtime packages fail the step above; dev packages: see rig-enforcement, section 3."
       - name: npm audit (runtime)
-        if: (success() || failure()) && hashFiles('package-lock.json') != ''
+        if: (success() || failure()) && hashFiles(format('{0}/package-lock.json', inputs.working-directory)) != ''
+        working-directory: ${{ inputs.working-directory }}
         run: npm audit --audit-level=high --omit=dev
       - name: npm audit (all dependencies, warning only)
-        if: (success() || failure()) && hashFiles('package-lock.json') != ''
+        if: (success() || failure()) && hashFiles(format('{0}/package-lock.json', inputs.working-directory)) != ''
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          NPM_DIR: ${{ inputs.working-directory }}
         run: |
-          npm audit --audit-level=high || echo "::warning file=package-lock.json::npm audit found a high or critical vulnerability. Runtime dependencies fail the step above; dev dependencies: see rig-enforcement, section 3."
+          lockfile=package-lock.json
+          if [ "${NPM_DIR%/}" != "." ]; then lockfile="${NPM_DIR%/}/package-lock.json"; fi
+          npm audit --audit-level=high || echo "::warning file=$lockfile::npm audit found a high or critical vulnerability. Runtime dependencies fail the step above; dev dependencies: see rig-enforcement, section 3."
